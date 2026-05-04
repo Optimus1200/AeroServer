@@ -1,5 +1,6 @@
 # Requirements
 - A legitimate copy of Ace Combat: Infinity v2.11
+- .NET 8.0 installed on your computer
 
 # Getting Started
 1. In Releases, download the .zip file and the .yml patch file.
