@@ -1,27 +1,14 @@
-﻿using System.Net;
-using System.Net.Sockets;
-using System.Text;
+﻿using System.Text;
+using Microsoft.AspNetCore.Http.Extensions;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace LocalServer
 {
     class Program
     {
-        static string LOG_FILEPATH = "ServerEntries.log";
-
-        class AsyncListener
-        {
-            public string IpAddress { get; set; }
-            public int Port { get; set; }
-            public Task? Task { get; set; }
-
-            public AsyncListener(string ipAddress, int port, Task? task = null)
-            {
-                IpAddress = ipAddress;
-                Port = port;
-                Task = task;
-            }
-        }
+        const string LOG_FILEPATH = "ServerEntries.log";
+        static readonly object _logLock = new();
 
         static async Task Main(string[] args)
         {
@@ -34,105 +21,150 @@ namespace LocalServer
 
             File.WriteAllText(LOG_FILEPATH, string.Empty);
 
-            var listeners = new List<AsyncListener>(HTTP_PORTS.Length);
+            var builder = WebApplication.CreateBuilder(args);
 
-            foreach (var PORT in HTTP_PORTS)
+            builder.Logging.ClearProviders();
+
+            builder.WebHost.ConfigureKestrel(options =>
             {
-                listeners.Add(new AsyncListener(IP_ADDRESS, PORT, null));
-            }
+                options.AddServerHeader = false;
 
-            var tasks = new List<Task>(listeners.Count);
+                foreach (var port in HTTP_PORTS)
+                {
+                    options.Listen(System.Net.IPAddress.Parse(IP_ADDRESS), port);
+                }
+            });
 
-            foreach (var listener in listeners)
+            var app = builder.Build();
+
+            app.Use(async (context, next) =>
             {
-                listener.Task = Task.Run(() => StartListenerAsync(listener));
+                await LogRequestAsync(context);
+                await next();
+            });
 
-                Log($"[HTTP {listener.IpAddress}:{listener.Port}] Started listening.");
+            // Method-specific catch-all routes.
+            // GET  -> aircraft data payload
+            // POST -> aircraft data payload (same envelope; PS3 client expects
+            //         "data" field and crashes with a null deref otherwise)
+            app.MapGet("/{**catchAll}", HandleHttpGetRequest);
+            app.MapPost("/{**catchAll}", HandleHttpPostRequest);
 
-                tasks.Add(listener.Task);
+            foreach (var port in HTTP_PORTS)
+            {
+                Log($"[HTTP {IP_ADDRESS}:{port}] Started listening.");
             }
-
             Log("All listeners started.\n");
 
-            await Task.WhenAll(tasks);
+            await app.RunAsync();
 
             Console.WriteLine("Server offline. Press any key to exit...");
             Console.ReadKey();
         }
 
-        static async Task StartListenerAsync(AsyncListener asyncListener)
+        static async Task LogRequestAsync(HttpContext context)
         {
-            var tcpListener = new TcpListener(IPAddress.Parse(asyncListener.IpAddress), asyncListener.Port);
+            var request = context.Request;
+            var local = context.Connection.LocalIpAddress?.ToString() ?? "?";
+            var localPort = context.Connection.LocalPort;
 
-            tcpListener.Start();
+            // buffer body so request handler can still read
+            request.EnableBuffering();
 
-            while (true)
+            string body = "";
+            if (request.ContentLength > 0 || request.Headers.ContainsKey("Transfer-Encoding"))
             {
-                TcpClient client = await tcpListener.AcceptTcpClientAsync();
+                using var reader = new StreamReader(
+                    request.Body,
+                    Encoding.UTF8,
+                    detectEncodingFromByteOrderMarks: false,
+                    leaveOpen: true);
 
-                _ = Task.Run(() => HandleClient(client, asyncListener));
+                body = await reader.ReadToEndAsync();
+                request.Body.Position = 0;
             }
+
+            // build header block similear to original http log
+            var sb = new StringBuilder();
+            sb.Append($"[{local}:{localPort}] Received:\n\n");
+            sb.Append($"{request.Method} {request.GetEncodedPathAndQuery()} {request.Protocol}\n");
+            foreach (var header in request.Headers)
+            {
+                sb.Append($"{header.Key}: {header.Value}\n");
+            }
+
+            // format json printing to console
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                sb.Append('\n');
+                try
+                {
+                    var formatted = JToken.Parse(body).ToString(Formatting.Indented);
+                    sb.Append(formatted);
+                }
+                catch (JsonException)
+                {
+                    sb.Append(body);
+                }
+                sb.Append('\n');
+            }
+
+            Log(sb.ToString());
         }
 
-        static async Task HandleClient(TcpClient client, AsyncListener listener)
+        static async Task HandleHttpGetRequest(HttpContext context)
         {
-            // read message
+            Console.WriteLine(
+                "##########################################################\n" + 
+                "# HTTP GET REQUEST CALLED - PLEASE REPORT TO OPTIMUS1200 #\n" +
+                "##########################################################\n"
+            );
 
-            using (client)
-            using (var stream = client.GetStream())
+            var response = new JObject
             {
-                var buffer = new byte[4096];
-
-                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                if (bytesRead == 0) return;
-
-                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-
-                string messageHeader = message.Substring(0, message.IndexOf('{') - 1);
-
-                string jsonData = message.Substring(
-                    message.IndexOf('{'),
-                    message.LastIndexOf('}') + 1 - message.IndexOf('{')
-                );
-
-                string formattedJsonData = JToken.Parse(jsonData).ToString(Newtonsoft.Json.Formatting.Indented);
-
-                Log($"[{listener.IpAddress}:{listener.Port}] Received:\n\n" + messageHeader + "\n" + formattedJsonData + "\n");
-
-                // respond to message
-                string jsonResponse = "{\"status\": 0, \"data\": {\"aircraft\": []}}";
-
-                // If the response contains an empty aircraft array, populate it using Newtonsoft.Json
-                if (jsonResponse.Contains("\"aircraft\": []"))
+                ["status"] = 0,
+                ["data"] = new JObject
                 {
-                    var jObject = JObject.Parse(jsonResponse);
-                    jObject["data"]!["aircraft"] = new JArray("b01b", "adfx");
-                    jsonResponse = jObject.ToString(Newtonsoft.Json.Formatting.None);
+                    ["aircraft"] = new JArray()
                 }
+            };
 
-                byte[] bodyBytes = Encoding.UTF8.GetBytes(jsonResponse);
+            await WriteJsonResponseAsync(context, response);
+        }
 
-                string responseHeader =
-                    "HTTP/1.1 200 OK\r\n" +
-                    "Content-Type: application/json;charset=utf-8\r\n" +
-                    $"Content-Length: {bodyBytes.Length}\r\n" +
-                    "Connection: close\r\n" +
-                    "\r\n"; // end of headers
+        static async Task HandleHttpPostRequest(HttpContext context)
+        {
+            var response = new JObject
+            {
+                ["status"] = 0,
+                ["data"] = new JObject
+                {
+                    ["aircraft"] = new JArray()
+                }
+            };
 
-                byte[] headerBytes = Encoding.UTF8.GetBytes(responseHeader);
+            await WriteJsonResponseAsync(context, response);
+        }
 
-                await stream.WriteAsync(headerBytes, 0, headerBytes.Length);
-                await stream.WriteAsync(bodyBytes, 0, bodyBytes.Length);
+        static async Task WriteJsonResponseAsync(HttpContext context, JObject body)
+        {
+            byte[] bodyBytes = Encoding.UTF8.GetBytes(body.ToString(Formatting.None));
 
-                await stream.FlushAsync();
-            }
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = "application/json;charset=utf-8";
+            context.Response.ContentLength = bodyBytes.Length;
+            context.Response.Headers["Connection"] = "close";
+
+            await context.Response.Body.WriteAsync(bodyBytes, 0, bodyBytes.Length);
         }
 
         static void Log(string data)
         {
-            Console.WriteLine(data);
-
-            File.AppendAllText(LOG_FILEPATH, data + '\n');
+            lock (_logLock)
+            {
+                Console.WriteLine(data);
+                File.AppendAllText(LOG_FILEPATH, data + '\n');
+            }
         }
     }
 }
