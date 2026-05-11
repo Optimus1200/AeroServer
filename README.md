@@ -1,5 +1,5 @@
 # Requirements
-- [ASP.NET Core Runtime 8.0 Hosting Bundle](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+- [ASP.NET Core Runtime 8.0](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) (Hosting Bundle recommended for Windows)
 - [RPCS3](https://rpcs3.net/)
 - [PS3 Firmware](https://www.playstation.com/en-us/support/hardware/ps3/system-software/)
 - [Ace Combat Infinity Patch](https://wiki.rpcs3.net/index.php?title=Ace_Combat_Infinity&oldid=58822)
