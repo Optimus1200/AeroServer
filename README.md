@@ -1,6 +1,6 @@
 # About
 
-This is a mock server that aims to replicate the functionality of the Wind API to make the game work. Included in the Release is a custom build of RPCS3 by Killer0byte that allows the game to properly read .tss files., as well as a built-in patch to unlock all DLC and infinite fuel.
+This is a mock server that aims to replicate the functionality of the Wind API to make the game work. Included in the Release is a custom build of RPCS3 by Killer0byte that allows the game to properly read .tss files, as well as a built-in patch to unlock all DLC and infinite fuel.
 
 # Cheat Engine
 
