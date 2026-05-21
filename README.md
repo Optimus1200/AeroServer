@@ -6,7 +6,7 @@ RPCS3 Fork Source: https://github.com/The-OPERATIONS-Team/OPERATION-ETERNAL-LIBE
 
 # Cheat Engine
 
-Right now, this server does not implement save-data backup, so you should not be using Cheat Engine with this server, as you risk corrupting save data that is stored on the RPCN server, which will be very annoying to restore.
+Right now, this server does not implement save-data backup, so you should not be using Cheat Engine with this server, as you risk corrupting save data.
 
 # Supported Platforms
 - Windows
