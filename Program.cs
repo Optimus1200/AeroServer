@@ -83,18 +83,13 @@ namespace AeroServer
             Log($"AeroServer {VERSION:F1} - {OS}");
         
             bool tssStatus = await CheckTssFilesAsync();
-            if (!tssStatus)
-            {
-                Console.Write("All listeners stopped. Server offline. Press any key to exit...");
-                Console.ReadKey();
-            }
-            else
+            if (tssStatus)
             {
                 await RunServer();
-        
-                Console.Write("All listeners stopped. Server offline. Press any key to exit...");
-                Console.ReadKey();
             }
+                
+            Console.Write("All listeners stopped. Server offline. Press any key to exit...");
+            Console.ReadKey();
         }
 
         static string GetOSString()
@@ -197,29 +192,6 @@ namespace AeroServer
                     }
                 }
             });
-
-            // serve our own TSS files for game
-            //server.MapGet("/tss/{**catchAll}", context => ServeFileAsync(context));
-
-            //server.MapGet("/project_eula_en/{**rest}", context => ServeFileAsync(context));
-            //server.MapGet("/project_events_eula/{**rest}", context => ServeFileAsync(context));
-
-            //server.MapPost("/Wind/{**rest}", context => PostWindAsync(context));
-
-            //server.MapFallback("/{**catchAll}", context => UnhandledRouteAsync(context));
-
-            //server.MapGet("/{**catchAll}", context => UnhandledRouteAsync(context));
-            //server.MapPost("/{**catchAll}", context => UnhandledRouteAsync(context));
-            //server.MapPut("/{**catchAll}", context => UnhandledRouteAsync(context));
-            //server.MapPatch("/{**catchAll}", context => UnhandledRouteAsync(context));
-            //server.MapDelete("/{**catchAll}", context => UnhandledRouteAsync(context));
-
-
-            //server.MapGet("/{**catchAll}", context => ProxyUnhandledAsync(context));
-            //server.MapPost("/{**catchAll}", context => ProxyUnhandledAsync(context));
-            //server.MapPut("/{**catchAll}", context => ProxyUnhandledAsync(context));
-            //server.MapPatch("/{**catchAll}", context => ProxyUnhandledAsync(context));
-            //server.MapDelete("/{**catchAll}", context => ProxyUnhandledAsync(context));
         }
 
         static async Task<bool> CheckTssFilesAsync()
@@ -250,7 +222,7 @@ namespace AeroServer
 
                 if (!VerifyFileHash(tssFilepath))
                 {
-                    await LogAsync($"[ERROR] FILE DOES NOT CONTAIN EXPECTED CONTENTS: {tssFilepath}", ConsoleColor.Red);
+                    await LogAsync($"Failed to validate: {tssFilepath}", ConsoleColor.Red);
                     areFilesGood = false;
                 }
                 else
