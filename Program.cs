@@ -814,46 +814,6 @@ namespace AeroServer
             return dnsServer;
         }
 
-        static async Task ProxyUnhandledAsync(HttpContext context)
-        {
-            // If the requested path ends in .tss, serve it from local files directly
-            if (context.Request.Path.Value != null && 
-                context.Request.Path.Value.EndsWith(".tss", StringComparison.OrdinalIgnoreCase))
-            {
-                await ServeFileAsync(context);
-                return;
-            }
-
-            // 1. Rebuild the exact destination URL
-            string targetUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}";
-
-            // 2. Create the outbound request with matching Method and URL
-            using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
-
-            // 3. Copy incoming Request Body and Request Headers as-is
-            request.Content = new StreamContent(context.Request.Body);
-            foreach (var h in context.Request.Headers)
-            {
-                if (!request.Headers.TryAddWithoutValidation(h.Key, h.Value.ToArray()))
-                    request.Content.Headers.TryAddWithoutValidation(h.Key, h.Value.ToArray());
-            }
-
-            // 4. Send request and get response headers from destination
-            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-
-            // 5. Copy Response Status and Response Headers back to source as-is
-            context.Response.StatusCode = (int)response.StatusCode;
-            foreach (var h in response.Headers)
-                context.Response.Headers[h.Key] = h.Value.ToArray();
-            foreach (var h in response.Content.Headers)
-                context.Response.Headers[h.Key] = h.Value.ToArray();
-
-            context.Response.Headers.Remove("transfer-encoding"); // Let Kestrel manage chunking automatically
-
-            // 6. Stream the Response Body back to the source as-is
-            await response.Content.CopyToAsync(context.Response.Body);
-        }
-
         static string PrettyPrintDns(string dnsLogString)
         {
             if (string.IsNullOrWhiteSpace(dnsLogString))
