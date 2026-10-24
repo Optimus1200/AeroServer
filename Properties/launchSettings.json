@@ -1,12 +1,10 @@
 {
   "profiles": {
-    "LocalServer": {
+    "AeroServer": {
       "commandName": "Project",
-      "launchBrowser": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      },
-      "applicationUrl": "https://localhost:51311;http://localhost:51312"
+      }
     }
   }
 }
